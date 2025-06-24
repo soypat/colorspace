@@ -1,4 +1,4 @@
-module github.com/YOURUSER/YOURREPONAME
+module github.com/soypat/colorspace
 
 go 1.20
 

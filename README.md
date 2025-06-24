@@ -12,6 +12,16 @@ How to install package with newer versions of Go (+1.16):
 go mod download github.com/soypat/colorspace@latest
 ```
 
+## Linear interpolation example
+Shown in each image are 4  for different color gradients generated with [`examples/lerp`](./examples/lerp/lerp.go):
+1. Topmost: **sRGB**. This is the naive linear interpolation
+2. **Linear sRGB**. 
+3. **CIE XYZ**
+4. **OKLAB**
+5. **OKLCH**. Designed to yield the most perceptively uniform gradient.
 
 
-
+![greyred to blue lerp](./greyred-blue.png)
+![red to blue lerp](./red-blue.png)
+![white to blue lerp](./white-blue.png)
+![white to black lerp](./white-black.png)
