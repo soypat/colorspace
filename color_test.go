@@ -8,7 +8,7 @@ import (
 
 func TestBasic(t *testing.T) {
 	red := SRGB{R: 1, G: 0, B: 0}
-	redlsrgb := red.LsRGB()
+	redlsrgb := red.LSRGB()
 	wantlsrgb := LSRGB{R: 1, G: 0, B: 0}
 	if redlsrgb != wantlsrgb {
 		t.Errorf("lsrgb for red mismatch, want %v, got %v", wantlsrgb, redlsrgb)

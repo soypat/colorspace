@@ -113,30 +113,30 @@ func LerpSRGB(c1, c2 color.Color, v float32) color.Color {
 }
 
 func LerpLSRGB(c1, c2 color.Color, v float32) color.Color {
-	o1 := ColorToSRGB(c1).LsRGB()
-	o2 := ColorToSRGB(c2).LsRGB()
+	o1 := ColorToSRGB(c1).LSRGB()
+	o2 := ColorToSRGB(c2).LSRGB()
 	return o1.Lerp(o2, v).ClipToGamut().SRGB()
 }
 
 func LerpCIEXYZ(c1, c2 color.Color, v float32) color.Color {
-	o1 := ColorToSRGB(c1).LsRGB().CIEXYZ()
-	o2 := ColorToSRGB(c2).LsRGB().CIEXYZ()
-	return o1.Lerp(o2, v).LsRGB().ClipToGamut().SRGB()
+	o1 := ColorToSRGB(c1).LSRGB().CIEXYZ()
+	o2 := ColorToSRGB(c2).LSRGB().CIEXYZ()
+	return o1.Lerp(o2, v).LSRGB().ClipToGamut().SRGB()
 }
 
 func LerpOKLAB(c1, c2 color.Color, v float32) color.Color {
-	o1 := ColorToSRGB(c1).LsRGB().CIEXYZ().OKLAB()
-	o2 := ColorToSRGB(c2).LsRGB().CIEXYZ().OKLAB()
+	o1 := ColorToSRGB(c1).LSRGB().CIEXYZ().OKLAB()
+	o2 := ColorToSRGB(c2).LSRGB().CIEXYZ().OKLAB()
 	lch := o1.Lerp(o2, v).OKLCH()
-	mapped := lch.AutoGamutMapping()
-	return mapped.OKLAB().CIEXYZ().LsRGB().ClipToGamut().SRGB()
+	mapped := lch.GamutMappedLSRGB()
+	return mapped.OKLAB().CIEXYZ().LSRGB().ClipToGamut().SRGB()
 }
 
 func LerpOKLCH(c1, c2 color.Color, v float32) color.Color {
-	o1 := ColorToSRGB(c1).LsRGB().CIEXYZ().OKLAB().OKLCH()
-	o2 := ColorToSRGB(c2).LsRGB().CIEXYZ().OKLAB().OKLCH()
-	mapped := o1.Lerp(o2, v).AutoGamutMapping()
-	result := mapped.OKLAB().CIEXYZ().LsRGB().ClipToGamut().SRGB()
+	o1 := ColorToSRGB(c1).LSRGB().CIEXYZ().OKLAB().OKLCH()
+	o2 := ColorToSRGB(c2).LSRGB().CIEXYZ().OKLAB().OKLCH()
+	mapped := o1.Lerp(o2, v).GamutMappedLSRGB()
+	result := mapped.OKLAB().CIEXYZ().LSRGB().ClipToGamut().SRGB()
 	return result
 }
 
@@ -170,7 +170,7 @@ func invTransferFunc(v float32) float32 {
 	return sign * (1.055*math32.Pow(abs, 1/2.4) - 0.055)
 }
 
-func (c SRGB) LsRGB() LSRGB {
+func (c SRGB) LSRGB() LSRGB {
 	return LSRGB{
 		R: transferFunc(c.R),
 		G: transferFunc(c.G),
@@ -186,10 +186,8 @@ func (c LSRGB) SRGB() SRGB {
 	}
 }
 
-func (c LSRGB) Vec() ms3.Vec { return ms3.Vec{X: c.R, Y: c.G, Z: c.B} }
-func (c CIEXYZ) Vec() ms3.Vec {
-	return ms3.Vec{X: c.X, Y: c.Y, Z: c.Z}
-}
+func (c LSRGB) Vec() ms3.Vec  { return ms3.Vec{X: c.R, Y: c.G, Z: c.B} }
+func (c CIEXYZ) Vec() ms3.Vec { return ms3.Vec{X: c.X, Y: c.Y, Z: c.Z} }
 func (c CIELAB) Vec() ms3.Vec { return ms3.Vec{X: c.L, Y: c.A, Z: c.B} }
 func (c CIELCH) Vec() ms3.Vec { return ms3.Vec{X: c.L, Y: c.C, Z: c.H} }
 func (c OKLCH) Vec() ms3.Vec  { return ms3.Vec{X: c.L, Y: c.C, Z: c.H} }
@@ -204,7 +202,7 @@ func (c LSRGB) CIEXYZ() CIEXYZ {
 	}
 }
 
-func (c CIEXYZ) LsRGB() LSRGB {
+func (c CIEXYZ) LSRGB() LSRGB {
 	v := ms3.MulMatVec(xyzToLinSRGB, c.Vec())
 	return LSRGB{R: v.X, G: v.Y, B: v.Z}
 }
@@ -262,7 +260,7 @@ func (c OKLAB) OKLCH() OKLCH {
 	}
 }
 
-func (c OKLCH) AutoGamutMapping() OKLCH {
+func (c OKLCH) GamutMappedLSRGB() OKLCH {
 	// Early return for Lightness exceed range.
 	origin := c
 	if origin.L < 0 || origin.L > 100 {
@@ -277,7 +275,7 @@ func (c OKLCH) AutoGamutMapping() OKLCH {
 		eps = 0.0001
 	)
 	current := origin
-	clipped := current.OKLAB().CIEXYZ().LsRGB().ClipToGamut()
+	clipped := current.OKLAB().CIEXYZ().LSRGB().ClipToGamut()
 	E := origin.OKLAB().DeltaE(clipped.CIEXYZ().OKLAB())
 	if E < JND {
 		return clipped.CIEXYZ().OKLAB().OKLCH()
@@ -287,10 +285,10 @@ func (c OKLCH) AutoGamutMapping() OKLCH {
 	for cmax-cmin > eps {
 		chroma := 0.5 * (cmin + cmax)
 		current.C = chroma
-		currentRGB := current.OKLAB().CIEXYZ().LsRGB()
+		currentRGB := current.OKLAB().CIEXYZ().LSRGB()
 		if minInGamut && currentRGB.InGamut() {
 			cmin = chroma
-			minInGamut = OKLCH{L: current.L, C: chroma, H: current.H}.OKLAB().CIEXYZ().LsRGB().InGamut()
+			minInGamut = OKLCH{L: current.L, C: chroma, H: current.H}.OKLAB().CIEXYZ().LSRGB().InGamut()
 			continue
 		}
 		clipped = currentRGB.ClipToGamut()
@@ -301,7 +299,7 @@ func (c OKLCH) AutoGamutMapping() OKLCH {
 			}
 			minInGamut = false
 			cmin = chroma
-			minInGamut = OKLCH{L: current.L, C: chroma, H: current.H}.OKLAB().CIEXYZ().LsRGB().InGamut()
+			minInGamut = OKLCH{L: current.L, C: chroma, H: current.H}.OKLAB().CIEXYZ().LSRGB().InGamut()
 		} else {
 			cmax = chroma
 		}
