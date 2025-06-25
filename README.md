@@ -13,7 +13,7 @@ go mod download github.com/soypat/colorspace@latest
 ```
 
 ## Linear interpolation example
-Shown in each image are 4  for different color gradients generated with [`examples/lerp`](./examples/lerp/lerp.go):
+Shown in each image are 5 different color gradients generated with linear interpolation in each available colorspace. See [`examples/lerp`](./examples/lerp/lerp.go):
 1. Topmost: **sRGB**. This is the naive linear interpolation
 2. **Linear sRGB**. 
 3. **CIE XYZ**
