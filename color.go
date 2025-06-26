@@ -8,12 +8,39 @@ import (
 	"github.com/soypat/geometry/ms3"
 )
 
-const undefinedHue = 0.0
+const (
+	undefinedHue = 0.0
+	d50x, d50z   = 0.3457 / 0.3585, (1.0 - 0.3457 - 0.3585) / 0.3585
+	d65x, d65z   = 0.3127 / 0.3290, (1.0 - 0.3127 - 0.3290) / 0.3290
+)
+
+// IlluminantD65 returns the standard illuminant which represents noon daylight (D65).
+// Values are normalized to the y value provided.
+func IlluminantD65(ynormal float32) CIEXYZ {
+	return CIEXYZ{X: ynormal * d65x, Y: ynormal, Z: d65z * ynormal}
+}
+
+// IlluminantD50 returns the standard illuminant representing horizon light (D50).
+// Values are normalized to the y value provided.
+func IlluminantD50(ynormal float32) CIEXYZ {
+	return CIEXYZ{X: ynormal * d50x, Y: ynormal, Z: d50z * ynormal}
+}
+
+// Illuminant returns a standard illuminant given the CIE chromaticity coordinates of a perfectly
+// reflecting (or transmitting) diffuser.
+func Illuminant(ynormal, xchroma, ychroma float32) CIEXYZ {
+	xmul := xchroma / ychroma
+	zmul := (1 - xchroma - ychroma) / ychroma
+	return CIEXYZ{
+		X: ynormal * xmul,
+		Y: ynormal,
+		Z: ynormal * zmul,
+	}
+}
 
 var (
 	// standard white points, defined by 4-figure CIE x,y chromaticities
-	d50 = ms3.Vec{X: 0.3457 / 0.3585, Y: 1, Z: (1.0 - 0.3457 - 0.3585) / 0.3585}
-	d65 = ms3.Vec{X: 0.3127 / 0.3290, Y: 1, Z: (1.0 - 0.3127 - 0.3290) / 0.3290}
+	d50 = IlluminantD50(1).vec()
 
 	// Transposed due to being defined in column major format.
 	linSRGBToXYZ = ms3.NewMat3([]float32{
@@ -102,6 +129,7 @@ type LSRGB struct {
 // in some proportion lies on the line between those two colors in this space. One disadvantage
 // of this model is that it is not perceptually uniform. The disadvantage is remedied in subsequent color models
 // such as CIELUV and [CIELAB].
+// The XYZ values are also called tristiumulants.
 type CIEXYZ struct {
 	X, Y, Z float32
 }
@@ -186,15 +214,23 @@ func (c LSRGB) SRGB() SRGB {
 	}
 }
 
-func (c LSRGB) Vec() ms3.Vec  { return ms3.Vec{X: c.R, Y: c.G, Z: c.B} }
-func (c CIEXYZ) Vec() ms3.Vec { return ms3.Vec{X: c.X, Y: c.Y, Z: c.Z} }
-func (c CIELAB) Vec() ms3.Vec { return ms3.Vec{X: c.L, Y: c.A, Z: c.B} }
-func (c CIELCH) Vec() ms3.Vec { return ms3.Vec{X: c.L, Y: c.C, Z: c.H} }
-func (c OKLCH) Vec() ms3.Vec  { return ms3.Vec{X: c.L, Y: c.C, Z: c.H} }
-func (c OKLAB) Vec() ms3.Vec  { return ms3.Vec{X: c.L, Y: c.A, Z: c.B} }
+func (c SRGB) vec() ms3.Vec        { return ms3.Vec{X: c.R, Y: c.G, Z: c.B} }
+func (c LSRGB) vec() ms3.Vec       { return ms3.Vec{X: c.R, Y: c.G, Z: c.B} }
+func (c CIEXYZ) vec() ms3.Vec      { return ms3.Vec{X: c.X, Y: c.Y, Z: c.Z} }
+func (c CIELAB) vec() ms3.Vec      { return ms3.Vec{X: c.L, Y: c.A, Z: c.B} }
+func (c CIELCH) vec() ms3.Vec      { return ms3.Vec{X: c.L, Y: c.C, Z: c.H} }
+func (c OKLCH) vec() ms3.Vec       { return ms3.Vec{X: c.L, Y: c.C, Z: c.H} }
+func (c OKLAB) vec() ms3.Vec       { return ms3.Vec{X: c.L, Y: c.A, Z: c.B} }
+func (c SRGB) Array() [3]float32   { return c.vec().Array() }
+func (c LSRGB) Array() [3]float32  { return c.vec().Array() }
+func (c CIEXYZ) Array() [3]float32 { return c.vec().Array() }
+func (c CIELAB) Array() [3]float32 { return c.vec().Array() }
+func (c CIELCH) Array() [3]float32 { return c.vec().Array() }
+func (c OKLCH) Array() [3]float32  { return c.vec().Array() }
+func (c OKLAB) Array() [3]float32  { return c.vec().Array() }
 
 func (c LSRGB) CIEXYZ() CIEXYZ {
-	v := ms3.MulMatVec(linSRGBToXYZ, c.Vec())
+	v := ms3.MulMatVec(linSRGBToXYZ, c.vec())
 	return CIEXYZ{
 		X: v.X,
 		Y: v.Y,
@@ -203,7 +239,7 @@ func (c LSRGB) CIEXYZ() CIEXYZ {
 }
 
 func (c CIEXYZ) LSRGB() LSRGB {
-	v := ms3.MulMatVec(xyzToLinSRGB, c.Vec())
+	v := ms3.MulMatVec(xyzToLinSRGB, c.vec())
 	return LSRGB{R: v.X, G: v.Y, B: v.Z}
 }
 
@@ -215,7 +251,7 @@ func (c SRGB) RGBA() (r, g, b, a uint32) {
 }
 
 func (c CIEXYZ) OKLAB() OKLAB {
-	lms := ms3.MulMatVec(xyzToLMS, c.Vec())
+	lms := ms3.MulMatVec(xyzToLMS, c.vec())
 
 	v := ms3.MulMatVec(lmsToOKLAB, ms3.Vec{
 		X: math32.Cbrt(lms.X),
@@ -230,7 +266,7 @@ func (c CIEXYZ) OKLAB() OKLAB {
 }
 
 func (c OKLAB) CIEXYZ() CIEXYZ {
-	LMSnl := ms3.MulMatVec(oklabToLMS, c.Vec())
+	LMSnl := ms3.MulMatVec(oklabToLMS, c.vec())
 	v := ms3.MulMatVec(lmsToXYZ, ms3.Vec{
 		X: LMSnl.X * LMSnl.X * LMSnl.X,
 		Y: LMSnl.Y * LMSnl.Y * LMSnl.Y,
@@ -348,7 +384,7 @@ func (c CIEXYZ) CIELAB() CIELAB {
 		κ = 24389. / 27  // 29^3/3^3
 	)
 	// compute xyz, which is XYZ scaled relative to reference white
-	xyz := ms3.MulElem(c.Vec(), d50)
+	xyz := ms3.MulElem(c.vec(), d50)
 	f := func(x float32) float32 {
 		if x > ε {
 			return math32.Cbrt(x)
@@ -405,12 +441,12 @@ func (c CIELAB) CIEXYZ() CIEXYZ {
 		xyz.Z = (116*f2 - 16) / κ
 	}
 	// Compute XYZ by scaling xyz by reference white
-	v := ms3.MulElem(xyz.Vec(), d50)
+	v := ms3.MulElem(xyz.vec(), d50)
 	return CIEXYZ{X: v.X, Y: v.Y, Z: v.Z}
 }
 
 func (reference OKLAB) DeltaE(sample OKLAB) float32 {
-	e := ms3.Sub(reference.Vec(), sample.Vec())
+	e := ms3.Sub(reference.vec(), sample.vec())
 	return math32.Sqrt(ms3.Dot(e, e))
 }
 
@@ -493,6 +529,7 @@ func (from LSRGB) Lerp(to LSRGB, v float32) LSRGB {
 		B: ms1.Interp(from.B, to.B, v),
 	}
 }
+
 func (from SRGB) Lerp(to SRGB, v float32) SRGB {
 	return SRGB{
 		R: ms1.Interp(from.R, to.R, v),
