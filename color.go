@@ -195,7 +195,7 @@ func invTransferFunc(v float32) float32 {
 	if abs <= 0.0031308 {
 		return 12.92 * v
 	}
-	return sign * (1.055*math32.Pow(abs, 1/2.4) - 0.055)
+	return sign * (1.055*math32.Pow(abs, 1./2.4) - 0.055)
 }
 
 func (c SRGB) LSRGB() LSRGB {
