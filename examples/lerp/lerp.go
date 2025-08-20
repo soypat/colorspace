@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -30,9 +31,11 @@ func main() {
 				img.Set(ix, yoff+height, splitcolor)
 			}
 		}
-		fp, _ := os.Create(crange.name + ".png")
+		name := crange.name + ".png"
+		fp, _ := os.Create(name)
 		png.Encode(fp, img)
 		fp.Close()
+		fmt.Println("finished generating", name)
 	}
 }
 

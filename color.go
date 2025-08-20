@@ -10,6 +10,7 @@ import (
 
 const (
 	undefinedHue = 0.0
+	epsUnit      = 1e-5
 	d50x, d50z   = 0.3457 / 0.3585, (1.0 - 0.3457 - 0.3585) / 0.3585
 	d65x, d65z   = 0.3127 / 0.3290, (1.0 - 0.3127 - 0.3290) / 0.3290
 )
@@ -134,24 +135,70 @@ type CIEXYZ struct {
 	X, Y, Z float32
 }
 
+// HSV is the Hue–Saturation–Value cylindrical-coordinate color space.
+// It is often used in user interfaces and color pickers because it aligns
+// more closely with human perception of color attributes than RGB.
+//
+// Components:
+//   - H (Hue): The angle of the color on the color wheel, measured in degrees.
+//     Range is [0, 360). Red = 0°, Green = 120°, Blue = 240°.
+//     Undefined for achromatic colors (S = 0).
+//   - S (Saturation): The intensity or purity of the hue, in [0, 1].
+//     0 means grayscale (no color), 1 means fully saturated.
+//   - V (Value): The brightness of the color, in [0, 1].
+//     0 corresponds to black, 1 corresponds to the brightest form
+//     of the color given its hue and saturation.
+//
+// Example usage:
+//
+//	HSV{H: 0, S: 1, V: 1}   // pure red
+//	HSV{H: 120, S: 1, V: 1} // pure green
+//	HSV{H: 240, S: 1, V: 1} // pure blue
+type HSV struct {
+	H float32
+	S float32
+	V float32
+}
+
+// HSL is the Hue–Saturation–Lightness cylindrical-coordinate color space.
+// It is similar to HSV but defines the third axis as lightness rather than value.
+// HSL is widely used in digital art and CSS because its parameters
+// allow for intuitive control over tints, shades, and tones.
+type HSL struct {
+	H float32 // Hue. Is the radial component.
+	S float32 // Saturation. Also known as chroma. Corresponds to intensity of color.
+	L float32 // Lightness.
+}
+
+// LerpSRGB interpolates directly in gamma-encoded sRGB.
+// Fast and simple, but not perceptually uniform.
+// Best for quick blends where accuracy is not critical.
 func LerpSRGB(c1, c2 color.Color, v float32) color.Color {
 	o1 := ColorToSRGB(c1)
 	o2 := ColorToSRGB(c2)
 	return o1.Lerp(o2, v)
 }
 
+// LerpLSRGB interpolates in linear-light sRGB (after removing gamma).
+// More physically accurate than plain sRGB (like mixing light).
+// Best for image compositing and blending intensities.
 func LerpLSRGB(c1, c2 color.Color, v float32) color.Color {
 	o1 := ColorToSRGB(c1).LSRGB()
 	o2 := ColorToSRGB(c2).LSRGB()
 	return o1.Lerp(o2, v).ClipToGamut().SRGB()
 }
 
+// LerpCIEXYZ interpolates in device-independent CIE XYZ space.
+// Useful for cross-device workflows and conversions, not perceptually uniform.
 func LerpCIEXYZ(c1, c2 color.Color, v float32) color.Color {
 	o1 := ColorToSRGB(c1).LSRGB().CIEXYZ()
 	o2 := ColorToSRGB(c2).LSRGB().CIEXYZ()
 	return o1.Lerp(o2, v).LSRGB().ClipToGamut().SRGB()
 }
 
+// LerpOKLAB interpolates in OKLab, a perceptually uniform space.
+// Produces smooth, visually even blends.
+// Best for perceptual color mixing and gradients.
 func LerpOKLAB(c1, c2 color.Color, v float32) color.Color {
 	o1 := ColorToSRGB(c1).LSRGB().CIEXYZ().OKLAB()
 	o2 := ColorToSRGB(c2).LSRGB().CIEXYZ().OKLAB()
@@ -160,6 +207,9 @@ func LerpOKLAB(c1, c2 color.Color, v float32) color.Color {
 	return mapped.OKLAB().CIEXYZ().LSRGB().ClipToGamut().SRGB()
 }
 
+// LerpOKLCH interpolates in OKLCH (lightness, chroma, hue).
+// Preserves hue direction and interpolates hue angles correctly.
+// Best for perceptual gradients where hue continuity matters.
 func LerpOKLCH(c1, c2 color.Color, v float32) color.Color {
 	o1 := ColorToSRGB(c1).LSRGB().CIEXYZ().OKLAB().OKLCH()
 	o2 := ColorToSRGB(c2).LSRGB().CIEXYZ().OKLAB().OKLCH()
@@ -221,6 +271,8 @@ func (c CIELAB) vec() ms3.Vec      { return ms3.Vec{X: c.L, Y: c.A, Z: c.B} }
 func (c CIELCH) vec() ms3.Vec      { return ms3.Vec{X: c.L, Y: c.C, Z: c.H} }
 func (c OKLCH) vec() ms3.Vec       { return ms3.Vec{X: c.L, Y: c.C, Z: c.H} }
 func (c OKLAB) vec() ms3.Vec       { return ms3.Vec{X: c.L, Y: c.A, Z: c.B} }
+func (c HSV) vec() ms3.Vec         { return ms3.Vec{X: c.H, Y: c.S, Z: c.V} }
+func (c HSL) vec() ms3.Vec         { return ms3.Vec{X: c.H, Y: c.S, Z: c.L} }
 func (c SRGB) Array() [3]float32   { return c.vec().Array() }
 func (c LSRGB) Array() [3]float32  { return c.vec().Array() }
 func (c CIEXYZ) Array() [3]float32 { return c.vec().Array() }
@@ -228,6 +280,147 @@ func (c CIELAB) Array() [3]float32 { return c.vec().Array() }
 func (c CIELCH) Array() [3]float32 { return c.vec().Array() }
 func (c OKLCH) Array() [3]float32  { return c.vec().Array() }
 func (c OKLAB) Array() [3]float32  { return c.vec().Array() }
+func (c HSV) Array() [3]float32    { return c.vec().Array() }
+func (c HSL) Array() [3]float32    { return c.vec().Array() }
+
+// HSV converts gamma-encoded sRGB to HSV (all in [0,1] except H in degrees).
+func (c SRGB) HSV() HSV {
+	r, g, b := c.R, c.G, c.B
+	v := c.vec()
+	max := v.Max()
+	min := v.Min()
+	delta := max - min
+
+	var h float32
+	if delta == 0 {
+		h = undefinedHue
+	} else if max == r {
+		h = 60 * ((g - b) / delta)
+	} else if max == g {
+		h = 60 * ((b-r)/delta + 2)
+	} else { // max == b
+		h = 60 * ((r-g)/delta + 4)
+	}
+
+	h = wrapHue(h)
+
+	var s float32
+	if max > 0 {
+		s = delta / max
+	} else {
+		s = 0
+	}
+	return HSV{H: h, S: s, V: max}
+}
+
+// HSL converts gamma-encoded sRGB to HSL (all in [0,1] except H in degrees).
+func (c SRGB) HSL() HSL {
+	v := c.vec()
+	max := v.Max()
+	min := v.Min()
+	delta := max - min
+
+	l := 0.5 * (max + min)
+
+	var h float32
+	if delta == 0 {
+		h = undefinedHue
+	} else if max == c.R {
+		h = 60 * ((c.G - c.B) / delta)
+	} else if max == c.G {
+		h = 60 * ((c.B-c.R)/delta + 2)
+	} else { // max == b
+		h = 60 * ((c.R-c.G)/delta + 4)
+	}
+	h = wrapHue(h)
+
+	var s float32
+	if delta == 0 {
+		s = 0
+	} else if l <= 0.5 {
+		s = delta / (max + min)
+	} else {
+		s = delta / (2 - max - min)
+	}
+	return HSL{H: h, S: s, L: l}
+}
+
+// SRGB converts HSV to gamma-encoded sRGB. Inputs: H in degrees, S,V in [0,1].
+func (hsv HSV) SRGB() SRGB {
+	h := wrapHue(hsv.H)
+	s := ms1.Clamp(hsv.S, 0, 1)
+	v := ms1.Clamp(hsv.V, 0, 1)
+
+	if s <= epsUnit { // achromatic
+		return SRGB{R: v, G: v, B: v}
+	}
+
+	c := v * s
+	hp := h / 60
+	x := c * (1 - math32.Abs(math32.Mod(hp, 2)-1))
+
+	var r1, g1, b1 float32
+	switch {
+	case 0 <= hp && hp < 1:
+		r1, g1, b1 = c, x, 0
+	case 1 <= hp && hp < 2:
+		r1, g1, b1 = x, c, 0
+	case 2 <= hp && hp < 3:
+		r1, g1, b1 = 0, c, x
+	case 3 <= hp && hp < 4:
+		r1, g1, b1 = 0, x, c
+	case 4 <= hp && hp < 5:
+		r1, g1, b1 = x, 0, c
+	default: // 5 <= hp && hp < 6
+		r1, g1, b1 = c, 0, x
+	}
+	m := v - c
+	return SRGB{R: r1 + m, G: g1 + m, B: b1 + m}.ClipToGamut()
+}
+
+// SRGB converts HSL to gamma-encoded sRGB. Inputs: H in degrees, S,L in [0,1].
+func (hsl HSL) SRGB() SRGB {
+	h := wrapHue(hsl.H)
+	s := ms1.Clamp(hsl.S, 0, 1)
+	l := ms1.Clamp(hsl.L, 0, 1)
+
+	if s == 0 { // achromatic
+		return SRGB{R: l, G: l, B: l}
+	}
+
+	c := (1 - math32.Abs(2*l-1)) * s
+	hp := h / 60
+	x := c * (1 - math32.Abs(math32.Mod(hp, 2)-1))
+
+	var r1, g1, b1 float32
+	switch {
+	case 0 <= hp && hp < 1:
+		r1, g1, b1 = c, x, 0
+	case 1 <= hp && hp < 2:
+		r1, g1, b1 = x, c, 0
+	case 2 <= hp && hp < 3:
+		r1, g1, b1 = 0, c, x
+	case 3 <= hp && hp < 4:
+		r1, g1, b1 = 0, x, c
+	case 4 <= hp && hp < 5:
+		r1, g1, b1 = x, 0, c
+	default: // 5 <= hp && hp < 6
+		r1, g1, b1 = c, 0, x
+	}
+	m := l - c/2
+	return SRGB{R: r1 + m, G: g1 + m, B: b1 + m}.ClipToGamut()
+}
+
+// wrapHue normalizes H to [0,360).
+func wrapHue(h float32) float32 {
+	for h < 0 {
+		h += 360
+	}
+	for h >= 360 {
+		h -= 360
+	}
+	return h
+}
 
 func (c LSRGB) CIEXYZ() CIEXYZ {
 	v := ms3.MulMatVec(linSRGBToXYZ, c.vec())
@@ -296,6 +489,13 @@ func (c OKLAB) OKLCH() OKLCH {
 	}
 }
 
+// GamutMappedLSRGB maps the OKLCH color into the sRGB gamut.
+//
+// If the color is already representable in sRGB, it is returned unchanged.
+// Otherwise, chroma is reduced until the color can be expressed in linear sRGB
+// without clipping, while keeping lightness and hue as stable as possible.
+//
+// Best used after interpolation in OKLab/OKLCH to ensure the result is displayable.
 func (c OKLCH) GamutMappedLSRGB() OKLCH {
 	// Early return for Lightness exceed range.
 	origin := c
@@ -343,14 +543,20 @@ func (c OKLCH) GamutMappedLSRGB() OKLCH {
 	return clipped.CIEXYZ().OKLAB().OKLCH()
 }
 
+// InGamut reports whether the linear-light RGB color lies inside the sRGB gamut.
+// Returns true if all channels are in [0,1], false otherwise.
 func (c LSRGB) InGamut() bool {
 	return c.R <= 1 && c.G <= 1 && c.B <= 1 && c.R >= 0 && c.G >= 0 && c.B >= 0
 }
 
+// InGamut reports whether the gamma-encoded sRGB color lies inside the sRGB gamut.
+// Returns true if all channels are in [0,1], false otherwise.
 func (c SRGB) InGamut() bool {
 	return c.R <= 1 && c.G <= 1 && c.B <= 1 && c.R >= 0 && c.G >= 0 && c.B >= 0
 }
 
+// ClipToGamut clamps each channel of the linear-light RGB color to [0,1].
+// Useful after computations that may push values slightly outside the gamut.
 func (c LSRGB) ClipToGamut() LSRGB {
 	return LSRGB{
 		R: ms1.Clamp(c.R, 0, 1),
@@ -359,6 +565,8 @@ func (c LSRGB) ClipToGamut() LSRGB {
 	}
 }
 
+// ClipToGamut clamps each channel of the gamma-encoded sRGB color to [0,1].
+// Useful to avoid invalid values when converting or interpolating.
 func (c SRGB) ClipToGamut() SRGB {
 	return SRGB{
 		R: ms1.Clamp(c.R, 0, 1),
@@ -367,6 +575,7 @@ func (c SRGB) ClipToGamut() SRGB {
 	}
 }
 
+// OKLAB converts the OKLCH cylindrical representation back to OKLab Cartesian form. Hue (H) is interpreted in degrees, and converted into a* (A) and b* (B) axes.
 func (c OKLCH) OKLAB() OKLAB {
 	sin, cos := math32.Sincos(c.H * math32.Pi / 180)
 	return OKLAB{
@@ -482,22 +691,9 @@ func (from CIELCH) Lerp(to CIELCH, v float32) CIELCH {
 			to.H = from.H
 		}
 	}
-	// These branches are security, they are not taken regularly it seems.
-	Hdelta := to.H - from.H // Hue is cylindrical in space [0..360], so the difference between 1 and 359 is 2, not 358.
-	if Hdelta > 180 {
-		Hdelta -= 360
-	} else if Hdelta < -180 {
-		Hdelta += 360
-	}
-	H := from.H + v*Hdelta
-	if H > 360 {
-		H -= 360
-	} else if H < 0 {
-		H += 360
-	}
 	return CIELCH{
 		L: ms1.Interp(from.L, to.L, v),
-		H: H,
+		H: ms1.InterpWrap(360, from.H, to.H, v),
 		C: ms1.Interp(from.C, to.C, v),
 	}
 }
