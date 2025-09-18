@@ -437,9 +437,10 @@ func (c CIEXYZ) LSRGB() LSRGB {
 }
 
 func (c SRGB) RGBA() (r, g, b, a uint32) {
-	r = uint32(c.R * 0xffff)
-	g = uint32(c.G * 0xffff)
-	b = uint32(c.B * 0xffff)
+	// Add 0.5 to reduce bias.
+	r = uint32(c.R*0xffff + 0.5)
+	g = uint32(c.G*0xffff + 0.5)
+	b = uint32(c.B*0xffff + 0.5)
 	return r, g, b, 0xffff
 }
 
@@ -499,7 +500,7 @@ func (c OKLAB) OKLCH() OKLCH {
 func (c OKLCH) GamutMappedLSRGB() OKLCH {
 	// Early return for Lightness exceed range.
 	origin := c
-	if origin.L < 0 || origin.L > 100 {
+	if origin.L < 0 || origin.L > 1 {
 		return OKLCH{
 			L: math32.Min(math32.Max(origin.L, 0), 1),
 			C: 0,
@@ -593,7 +594,7 @@ func (c CIEXYZ) CIELAB() CIELAB {
 		κ = 24389. / 27  // 29^3/3^3
 	)
 	// compute xyz, which is XYZ scaled relative to reference white
-	xyz := ms3.MulElem(c.vec(), d50)
+	xyz := ms3.DivElem(c.vec(), d50)
 	f := func(x float32) float32 {
 		if x > ε {
 			return math32.Cbrt(x)
@@ -642,7 +643,7 @@ func (c CIELAB) CIEXYZ() CIEXYZ {
 		ycbrt := (c.L + 16) / 116
 		xyz.Y = ycbrt * ycbrt * ycbrt
 	} else {
-		xyz.Y = (116*f0 - 16) / κ
+		xyz.Y = (116*c.L - 16) / κ
 	}
 	if f2 > ecbrt {
 		xyz.Z = f2 * f2 * f2
@@ -663,8 +664,8 @@ func (c CIELCH) CIELAB() CIELAB {
 	sin, cos := math32.Sincos(c.H * math32.Pi / 180)
 	return CIELAB{
 		L: c.L,
-		A: c.C * sin,
-		B: c.C * cos,
+		A: c.C * cos,
+		B: c.C * sin,
 	}
 }
 
@@ -707,7 +708,11 @@ func (from CIELAB) Lerp(to CIELAB, v float32) CIELAB {
 }
 
 func (from OKLAB) Lerp(to OKLAB, v float32) OKLAB {
-	return OKLAB(CIELAB(from).Lerp(CIELAB(to), v))
+	return OKLAB{
+		L: ms1.Interp(from.L, to.L, v),
+		A: ms1.Interp(from.A, to.A, v),
+		B: ms1.Interp(from.B, to.B, v),
+	}
 }
 
 func (from CIEXYZ) Lerp(to CIEXYZ, v float32) CIEXYZ {
